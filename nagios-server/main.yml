@@ -1,0 +1,115 @@
+---
+- hosts: nagios-server
+  gather_facts: no
+  tasks: 
+    - name: Install dependency packages required for nagios-server
+      yum: 
+        state: present
+        name:
+          -  gd
+          -  gd-devel
+          -  httpd
+          -  php
+          -  gcc
+          -  glibc
+          -  glibc-common
+          -  httpd
+
+    - name: Create user nagios
+      user: 
+        name: nagios
+        password: "{{ 'password' | password_hash('sha512') }}"
+      tags: naguser
+
+    - name: copy nagios and its plugin files to nagios-server
+      copy:
+        src: "{{ item }}"
+        dest: /opt/
+      with_items:
+          - nagios-3.4.1.tar.gz
+          - nagios-plugins-2.0.tar.gz
+          - nrpe-2.15.tar.gz
+          - nagios.cfg
+      tags:
+        copyfiles
+
+    - name: Untar and compile nagios version 3.4.1
+      shell: |
+        cd /opt/
+        tar -xvzf nagios-3.4.1.tar.gz
+        cd nagios
+        ./configure
+        make all
+        make install
+        make install-init
+        make install-commandmode
+        make install-config
+        make install-webconf
+      tags:
+        compilenagios
+
+    - name: Create nagios web user to access web panel
+      command: htpasswd -b -c /usr/local/nagios/etc/htpasswd.users nagiosadmin passwd
+      tags:
+        nagwebuser
+
+    - name: Start nagios service
+      service:
+        name: nagios
+        state: started
+        enabled: yes
+      tags:
+        nagservice
+
+    - name: Compile nagios nagios-plugins-2
+      shell: |
+        cd /opt/
+        tar -xvzf nagios-plugins-2.0.tar.gz
+        cd nagios-plugins-2.0
+        ./configure
+        make
+        make install
+        mkdir /usr/local/nagios/etc/hosts
+      tags:
+        compileplugins
+
+
+    - name: copy nagios and its plugin files to nagios-server
+      copy:
+        src: nagios.cfg
+        dest: /usr/local/nagios/etc/nagios.cfg
+        backup: yes
+      tags:
+        copynagiosconf
+
+
+    - name: Restart nagios and httpd
+      service:
+        name: "{{ item }}"
+        state: restarted
+      with_items:
+        - nagios
+        - httpd  
+      tags:
+        restartservices
+
+    - name: Send notification over mail
+      mail:
+        host: smtp.qlc.co.in
+        port: 25
+        username: karan.kamble@qlc.in
+        password: passwd
+        from: karan.kamble@qlc.in
+        to: karankamble19@gmail.com
+        subject: Ansible-Nagios-Panel-Details
+        body: 'You can access the nagios panel using "http://your-public-ip/nagios"
+               Username: nagiosadmin
+               Password: passwd
+
+               Please change password to strong password.
+               Use below command to change password:
+
+                #htpasswd /usr/local/nagios/etc/htpasswd.users nagiosadmin'
+      delegate_to: localhost
+      tags:
+        notify
