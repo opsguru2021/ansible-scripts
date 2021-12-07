@@ -95,7 +95,7 @@
 
     - name: Send notification over mail
       mail:
-        host: smtp.qlc.co.in
+        host: smtp-server-hostname or ip-address
         port: 25
         username: karan.kamble@qlc.in
         password: passwd
